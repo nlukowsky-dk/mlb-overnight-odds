@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+*.xlsx
+*.Rmd
+WBC/
+data/
+*.png
+unqiue_events.csv
+2025_MiLB_Batting_Splits.csv
+Batting2426.csv
+Pitching2426.csv
