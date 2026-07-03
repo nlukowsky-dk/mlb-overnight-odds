@@ -1,3 +1,4 @@
+import math
 import streamlit as st
 import pandas as pd
 
@@ -93,7 +94,7 @@ def cell_nonalt(point, over_odds, under_odds):
 
 def cell_alt(point, over_odds, show_point=False):
     ov = fmt_american(over_odds) if not pd.isna(over_odds) else ""
-    pt = f"{int(float(point))}+" if (show_point and not pd.isna(point)) else ""
+    pt = f"{math.ceil(float(point))}+" if (show_point and not pd.isna(point)) else ""
     return pt, ov, ""
 
 
