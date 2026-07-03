@@ -104,7 +104,7 @@ def abbrev_name(full):
 
 # ── data loading ─────────────────────────────────────────────────────────────
 
-@st.cache_data(ttl=3 * 3600)
+@st.cache_data(ttl=300)
 def load_data():
     return pd.read_csv("odds_filtered.csv")
 
