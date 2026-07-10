@@ -160,7 +160,7 @@ def build_player_data(player):
     merged = over_df.merge(under_df, on=["id","market"], how="left")
     merged = merged.drop_duplicates(subset=["id","market"])
 
-    merged["Date"]      = merged["commence_time"].str[5:10]
+    merged["Date"]      = pd.to_datetime(merged["commence_time"]).dt.strftime('%m-%d')
     merged["away_abbr"] = merged["away_team"].map(TEAM_ABBR).fillna(merged["away_team"])
     merged["home_abbr"] = merged["home_team"].map(TEAM_ABBR).fillna(merged["home_team"])
     merged["Game"]      = merged["away_abbr"] + " @ " + merged["home_abbr"]
