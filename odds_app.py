@@ -1,6 +1,7 @@
 import math
 import streamlit as st
 import pandas as pd
+import duckdb
 
 st.set_page_config(page_title="MLB Overnight Historical Odds", layout="wide")
 
@@ -105,29 +106,44 @@ def abbrev_name(full):
 
 # ── data loading ─────────────────────────────────────────────────────────────
 
+CSV_PATH = "odds_filtered.csv"
+NEEDED_COLS = "id, commence_time, home_team, away_team, market, description, side, price, point"
+
+@st.cache_resource
+def get_con():
+    return duckdb.connect(database=":memory:")
+
+
 @st.cache_data(ttl=300)
-def load_data():
-    return pd.read_csv("odds_filtered.csv")
+def get_players():
+    con = get_con()
+    rows = con.execute(
+        f"SELECT DISTINCT description FROM read_csv_auto('{CSV_PATH}') WHERE description IS NOT NULL ORDER BY description"
+    ).fetchall()
+    return [r[0] for r in rows]
 
 
-@st.cache_data
-def get_players(df):
-    return sorted(df["description"].dropna().unique().tolist())
-
-
-@st.cache_data
-def build_pitcher_map(df):
-    pitcher_rows = df[df["market"].isin(PITCHER_MARKETS)][["id","description"]].drop_duplicates()
+@st.cache_data(ttl=300)
+def build_pitcher_map():
+    con = get_con()
+    markets = ", ".join(f"'{m}'" for m in PITCHER_MARKETS)
+    df = con.execute(
+        f"SELECT id, description FROM read_csv_auto('{CSV_PATH}') WHERE market IN ({markets})"
+    ).df()
     result = {}
-    for gid, grp in pitcher_rows.groupby("id"):
+    for gid, grp in df.groupby("id"):
         names = grp["description"].unique().tolist()
         result[gid] = " / ".join(abbrev_name(n) for n in names)
     return result
 
 
-@st.cache_data
-def build_player_data(df, player):
-    pf = df[df["description"] == player].copy()
+@st.cache_data(ttl=300)
+def build_player_data(player):
+    con = get_con()
+    pf = con.execute(
+        f"SELECT {NEEDED_COLS} FROM read_csv_auto('{CSV_PATH}') WHERE description = ?",
+        [player]
+    ).df()
     if pf.empty:
         return None, [], {}
 
@@ -301,15 +317,16 @@ def build_html_table(games, col_order, cell_data, pitcher_map=None):
     return f'{TABLE_CSS}<div style="overflow-y:auto;max-height:75vh;overflow-x:auto;"><table class="odds-table">{header}{tbody}</table></div>'
 
 
-def render_player_section(raw, player, pitcher_map_cache, slot):
-    """Render one player's full table into `slot` (a st container)."""
-    games, col_order, cell_data = build_player_data(raw, player)
+BATTER_COL_NAMES = {MARKET_LOOKUP[m][0] for m in BATTER_MARKETS if m in MARKET_LOOKUP}
+
+
+def render_player_section(player, pitcher_map_cache, slot):
+    games, col_order, cell_data = build_player_data(player)
     if games is None or games.empty:
         slot.warning(f"No data found for {player}.")
         return
-    player_markets = raw[raw["description"] == player]["market"].unique()
-    is_batter      = any(m in BATTER_MARKETS for m in player_markets)
-    pm             = pitcher_map_cache if is_batter else None
+    is_batter = any(c.replace("_2", "") in BATTER_COL_NAMES for c in col_order)
+    pm        = pitcher_map_cache if is_batter else None
     slot.markdown(build_html_table(games, col_order, cell_data, pm), unsafe_allow_html=True)
 
 
@@ -324,9 +341,8 @@ def _init_key(key, default):
 
 st.title("MLB Overnight Historical Odds")
 
-raw         = load_data()
-players     = get_players(raw)
-pitcher_map = build_pitcher_map(raw)
+players     = get_players()
+pitcher_map = build_pitcher_map()
 
 tab_player, tab_lineup = st.tabs(["Player View", "Lineup View"])
 
@@ -354,7 +370,7 @@ with tab_player:
         st.markdown("</div>", unsafe_allow_html=True)
 
     if selected:
-        render_player_section(raw, selected, pitcher_map, st)
+        render_player_section(selected, pitcher_map, st)
 
 
 # ════════════════════════════════════════════════════════════
@@ -416,7 +432,7 @@ with tab_lineup:
             st.rerun()
 
     if st.session_state["lv_sp_expanded"] and st.session_state["lv_sp_player"]:
-        render_player_section(raw, st.session_state["lv_sp_player"], pitcher_map, st)
+        render_player_section(st.session_state["lv_sp_player"], pitcher_map, st)
         st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
 
     # ── Batter slots 1-9 ─────────────────────────────────────
@@ -453,5 +469,5 @@ with tab_lineup:
                 st.rerun()
 
         if st.session_state[f"lv_expanded_{i}"] and st.session_state[f"lv_player_{i}"]:
-            render_player_section(raw, st.session_state[f"lv_player_{i}"], pitcher_map, st)
+            render_player_section(st.session_state[f"lv_player_{i}"], pitcher_map, st)
             st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
