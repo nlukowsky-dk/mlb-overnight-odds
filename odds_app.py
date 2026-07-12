@@ -137,11 +137,17 @@ def build_pitcher_map():
     return result
 
 
+MAX_GAMES = 50
+
 @st.cache_data(ttl=300)
-def build_player_data(player):
+def build_player_data(player, load_all=False):
     con = get_con()
+    limit_clause = "" if load_all else f"LIMIT {MAX_GAMES * 20}"
     pf = con.execute(
-        f"SELECT {NEEDED_COLS} FROM read_csv_auto('{CSV_PATH}') WHERE description = ?",
+        f"""SELECT {NEEDED_COLS} FROM read_csv_auto('{CSV_PATH}')
+            WHERE description = ?
+            ORDER BY commence_time DESC
+            {limit_clause}""",
         [player]
     ).df()
     if pf.empty:
@@ -171,6 +177,9 @@ def build_player_data(player):
         .drop_duplicates("id")
         .reset_index(drop=True)
     )
+
+    if not load_all and len(games) > MAX_GAMES:
+        games = games.head(MAX_GAMES)
 
     col_order = []
     cell_data = {}
@@ -321,13 +330,23 @@ BATTER_COL_NAMES = {MARKET_LOOKUP[m][0] for m in BATTER_MARKETS if m in MARKET_L
 
 
 def render_player_section(player, pitcher_map_cache, slot):
-    games, col_order, cell_data = build_player_data(player)
+    load_all_key = f"load_all_{player}"
+    if load_all_key not in st.session_state:
+        st.session_state[load_all_key] = False
+
+    load_all = st.session_state[load_all_key]
+    games, col_order, cell_data = build_player_data(player, load_all=load_all)
     if games is None or games.empty:
         slot.warning(f"No data found for {player}.")
         return
     is_batter = any(c.replace("_2", "") in BATTER_COL_NAMES for c in col_order)
     pm        = pitcher_map_cache if is_batter else None
     slot.markdown(build_html_table(games, col_order, cell_data, pm), unsafe_allow_html=True)
+
+    if not load_all:
+        if slot.button(f"Load full history for {player}", key=f"btn_load_all_{player}"):
+            st.session_state[load_all_key] = True
+            st.rerun()
 
 
 # ── session state helpers ─────────────────────────────────────────────────────
