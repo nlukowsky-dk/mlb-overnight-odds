@@ -137,7 +137,7 @@ def build_pitcher_map():
     return result
 
 
-MAX_GAMES = 50
+MAX_GAMES = 30
 
 @st.cache_data(ttl=300)
 def build_player_data(player, load_all=False):
@@ -329,12 +329,12 @@ def build_html_table(games, col_order, cell_data, pitcher_map=None):
 BATTER_COL_NAMES = {MARKET_LOOKUP[m][0] for m in BATTER_MARKETS if m in MARKET_LOOKUP}
 
 
-def render_player_section(player, pitcher_map_cache, slot):
+def render_player_section(player, pitcher_map_cache, slot, allow_load_all=True):
     load_all_key = f"load_all_{player}"
     if load_all_key not in st.session_state:
         st.session_state[load_all_key] = False
 
-    load_all = st.session_state[load_all_key]
+    load_all = allow_load_all and st.session_state[load_all_key]
     games, col_order, cell_data = build_player_data(player, load_all=load_all)
     if games is None or games.empty:
         slot.warning(f"No data found for {player}.")
@@ -343,7 +343,7 @@ def render_player_section(player, pitcher_map_cache, slot):
     pm        = pitcher_map_cache if is_batter else None
     slot.markdown(build_html_table(games, col_order, cell_data, pm), unsafe_allow_html=True)
 
-    if not load_all:
+    if allow_load_all and not load_all:
         if slot.button(f"Load full history for {player}", key=f"btn_load_all_{player}"):
             st.session_state[load_all_key] = True
             st.rerun()
@@ -451,7 +451,7 @@ with tab_lineup:
             st.rerun()
 
     if st.session_state["lv_sp_expanded"] and st.session_state["lv_sp_player"]:
-        render_player_section(st.session_state["lv_sp_player"], pitcher_map, st)
+        render_player_section(st.session_state["lv_sp_player"], pitcher_map, st, allow_load_all=False)
         st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
 
     # ── Batter slots 1-9 ─────────────────────────────────────
@@ -488,5 +488,5 @@ with tab_lineup:
                 st.rerun()
 
         if st.session_state[f"lv_expanded_{i}"] and st.session_state[f"lv_player_{i}"]:
-            render_player_section(st.session_state[f"lv_player_{i}"], pitcher_map, st)
+            render_player_section(st.session_state[f"lv_player_{i}"], pitcher_map, st, allow_load_all=False)
             st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
